@@ -1,35 +1,18 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using Unity.MLAgents;
+using Unity.MLAgents.Sensors;
 
-public class StepScript : MonoBehaviour
+public class StepScript : Agent
 {
 
-    public GameObject FRThigh;
-    public GameObject FLThigh;
-    public GameObject FRShin;
-    public GameObject FLShin;
-    public GameObject RRThigh;
-    public GameObject RLThigh;
-    public GameObject RRShin;
-    public GameObject RLShin;
+    public GameObject FRThigh, FLThigh, FRShin, FLShin, RRThigh, RLThigh, RRShin, RLShin, Pelvis;
+    Rigidbody rBody;
 
-    public float thighPosition = 0.0f;
-    public float shinPosition = 0.0f;
+    public float thighPosition, shinPosition = 0.0f;
 
-    Rigidbody frt_rb;
-    Rigidbody flt_rb;
-    Rigidbody frs_rb;
-    Rigidbody fls_rb;
-
-    HingeJoint frtJoint;
-    HingeJoint fltJoint;
-    HingeJoint rrtJoint;
-    HingeJoint rltJoint;
-    HingeJoint frsJoint;
-    HingeJoint flsJoint;
-    HingeJoint rrsJoint;
-    HingeJoint rlsJoint;
+    HingeJoint frtJoint, fltJoint, rrtJoint, rltJoint, frsJoint, flsJoint, rrsJoint, rlsJoint;
 
     public void SetJointTargetRotation(HingeJoint joint, float x) {
         x = (x + 1f) * 0.5f;
@@ -47,6 +30,9 @@ public class StepScript : MonoBehaviour
     // Start is called before the first frame update
     void Start()
     {
+
+        rBody = Pelvis.GetComponent<Rigidbody>();
+
         fltJoint = FLThigh.GetComponent<HingeJoint>();
         frtJoint = FRThigh.GetComponent<HingeJoint>();
         rrtJoint = RRThigh.GetComponent<HingeJoint>();
@@ -58,17 +44,55 @@ public class StepScript : MonoBehaviour
         rlsJoint = RLShin.GetComponent<HingeJoint>();
     }
 
-    // Update is called once per frame
-    void FixedUpdate()
-    {
-        SetJointTargetRotation(frtJoint, thighPosition);
-        SetJointTargetRotation(fltJoint, thighPosition);
-        SetJointTargetRotation(rrtJoint, thighPosition);
-        SetJointTargetRotation(rltJoint, thighPosition);
+    public override void OnEpisodeBegin() {
+        // Reset velocity and position
+        this.transform.localPosition = new Vector3(0, 0.755f, 0);
+        rBody.angularVelocity = Vector3.zero;
+        rBody.velocity = Vector3.zero;
+        Pelvis.transform.rotation = new Quaternion(0, 0, 0, 0);
+    }
 
-        SetJointTargetRotation(frsJoint, shinPosition);
-        SetJointTargetRotation(flsJoint, shinPosition);
-        SetJointTargetRotation(rrsJoint, shinPosition);
-        SetJointTargetRotation(rlsJoint, shinPosition);
+    public override void CollectObservations(VectorSensor sensor) {
+        // Agent position and velocity
+        sensor.AddObservation(Pelvis.transform.position);
+        sensor.AddObservation(rBody.velocity.x);
+        sensor.AddObservation(rBody.velocity.z);
+    }
+
+    public override void OnActionReceived(float[] vectorAction) {
+        // Front leg thighs are symmetrical
+        SetJointTargetRotation(frtJoint, vectorAction[0]);
+        SetJointTargetRotation(fltJoint, vectorAction[0]);
+
+        // Front leg shins
+        SetJointTargetRotation(frsJoint, vectorAction[1]);
+        SetJointTargetRotation(flsJoint, vectorAction[1]);
+
+        // Back leg thighs
+        SetJointTargetRotation(rrtJoint, vectorAction[2]);
+        SetJointTargetRotation(rltJoint, vectorAction[2]);
+
+        // Back leg shins
+        SetJointTargetRotation(rrsJoint, vectorAction[3]);
+        SetJointTargetRotation(rlsJoint, vectorAction[3]);
+
+        // Set Reward equal to distance that we have traveled forward
+        SetReward(Pelvis.transform.position.z);
+
+        // If we fall off platform
+        if (Pelvis.transform.position.y < -3f) {
+            AddReward(-10f);
+            EndEpisode();
+        }
+
+        if (Vector3.Dot(Pelvis.transform.up, Vector3.down) > 0) {
+            AddReward(-10f);
+            EndEpisode();
+        }
+
+        // Set a target distance
+        if (this.transform.localPosition.z > 100f) {
+            EndEpisode();
+        }
     }
 }
